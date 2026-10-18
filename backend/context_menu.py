@@ -1,73 +1,91 @@
 import os
 import sys
 import winreg
-
-from config import BACKEND_DIR, SERVICE_NAME
+from config import BACKEND_DIR
 
 PYTHON_EXE = sys.executable
 
-
 def _get_command(script_name, arg="%1"):
     script = BACKEND_DIR / script_name
-    return '"{}" "{}" "{}"'.format(PYTHON_EXE, script, arg)
+    # Quote correctly — supports paths with spaces
+    if arg:
+        return f'"{PYTHON_EXE}" "{script}" "{arg}"'
+    else:
+        return f'"{PYTHON_EXE}" "{script}"'
 
+def _set_key(path, default_value, icon=None, position="Top"):
+    key = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, path)
+    winreg.SetValueEx(key, "", 0, winreg.REG_SZ, default_value)
+    if icon:
+        winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, icon)
+    if position:
+        winreg.SetValueEx(key, "Position", 0, winreg.REG_SZ, position)
+    winreg.CloseKey(key)
 
 def install_context_menu():
-    """Add Zamok items to folder context menu."""
+    """Устанавливает пункты Zamok в контекстное меню папок (без HTTP)."""
     try:
-        # Zamok - Lock
-        key_path = r"Directory\shell\ZamokLock"
-        key = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, key_path)
-        winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "&Zamok - Lock")
-        winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, "shell32.dll,3")
+        # Lock
+        _set_key(r"Directory\shell\ZamokLock", "Zamok — Запереть", "shell32.dll,3")
+        key = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\shell\ZamokLock\command")
+        winreg.SetValueEx(key, "", 0, winreg.REG_SZ, _get_command("lock_dialog.py"))
         winreg.CloseKey(key)
 
-        cmd_key = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, key_path + r"\command")
-        winreg.SetValueEx(cmd_key, "", 0, winreg.REG_SZ, _get_command("lock_dialog.py"))
-        winreg.CloseKey(cmd_key)
+        # Unlock (отдельный пункт — удобнее чем искать в менеджере)
+        _set_key(r"Directory\shell\ZamokUnlock", "Zamok — Отпереть", "shell32.dll,4")
+        key = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\shell\ZamokUnlock\command")
+        winreg.SetValueEx(key, "", 0, winreg.REG_SZ, _get_command("unlock_dialog.py"))
+        winreg.CloseKey(key)
 
-        # Zamok - Manager (unlock list)
-        key_path2 = r"Directory\shell\ZamokManager"
-        key2 = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, key_path2)
-        winreg.SetValueEx(key2, "", 0, winreg.REG_SZ, "&Zamok - Manager")
-        winreg.SetValueEx(key2, "Icon", 0, winreg.REG_SZ, "shell32.dll,4")
-        winreg.CloseKey(key2)
+        # Manager
+        _set_key(r"Directory\shell\ZamokManager", "Zamok — Список", "shell32.dll,43")
+        key = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\shell\ZamokManager\command")
+        winreg.SetValueEx(key, "", 0, winreg.REG_SZ, _get_command("manager.py", ""))
+        winreg.CloseKey(key)
 
-        cmd_key2 = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, key_path2 + r"\command")
-        winreg.SetValueEx(cmd_key2, "", 0, winreg.REG_SZ, _get_command("manager.py", ""))
-        winreg.CloseKey(cmd_key2)
+        # Background (внутри папки)
+        _set_key(r"Directory\Background\shell\ZamokManager", "Zamok — Список", "shell32.dll,43")
+        key = winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, r"Directory\Background\shell\ZamokManager\command")
+        winreg.SetValueEx(key, "", 0, winreg.REG_SZ, _get_command("manager.py", ""))
+        winreg.CloseKey(key)
+
+        # Notify Explorer
+        try:
+            import ctypes
+            ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)  # SHCNE_ASSOCCHANGED
+        except Exception:
+            pass
 
         return True
     except Exception as e:
         print("Context menu install error:", e)
         return False
 
-
 def uninstall_context_menu():
-    """Remove Zamok items from folder context menu."""
-    try:
-        winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\shell\ZamokLock\command")
-        winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\shell\ZamokLock")
-    except FileNotFoundError:
-        pass
-    except Exception as e:
-        print("Context menu uninstall error (Lock):", e)
+    for path in [
+        r"Directory\shell\ZamokLock\command", r"Directory\shell\ZamokLock",
+        r"Directory\shell\ZamokUnlock\command", r"Directory\shell\ZamokUnlock",
+        r"Directory\shell\ZamokManager\command", r"Directory\shell\ZamokManager",
+        r"Directory\Background\shell\ZamokManager\command", r"Directory\Background\shell\ZamokManager",
+    ]:
+        try:
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, path)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            print(f"Uninstall error {path}:", e)
 
     try:
-        winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\shell\ZamokManager\command")
-        winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, r"Directory\shell\ZamokManager")
-    except FileNotFoundError:
+        import ctypes
+        ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
+    except Exception:
         pass
-    except Exception as e:
-        print("Context menu uninstall error (Manager):", e)
-
     return True
-
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "uninstall":
         uninstall_context_menu()
         print("Context menu removed.")
     else:
-        install_context_menu()
-        print("Context menu installed.")
+        ok = install_context_menu()
+        print("Context menu installed." if ok else "Failed to install.")
