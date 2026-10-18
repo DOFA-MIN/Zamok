@@ -19,3 +19,7 @@ bool locker_unlock_folder(const std::wstring& id_or_path, const std::wstring& pa
 bool locker_is_locked(const std::wstring& folder_path);
 std::wstring locker_hash_password(const std::wstring& password);
 bool locker_verify_password(const std::wstring& password, const std::wstring& stored_hash);
+
+// Helpers
+bool locker_is_safe_path(const std::wstring& path);
+std::wstring locker_normalize_path(const std::wstring& path);

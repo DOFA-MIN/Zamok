@@ -1,69 +1,49 @@
+"""
+Zamok — точка входа без HTTP (для отладки/консоли).
+
+УДАЛЕН Flask HTTP API (см. git history до v1).
+Теперь вся работа идет напрямую через locker.py:
+  - Служба: backend/service.py (без HTTP)
+  - Контекстное меню: backend/context_menu.py
+  - Диалоги: backend/lock_dialog.py / unlock_dialog.py / manager.py
+
+Этот файл оставлен для ручного запуска проверки:
+  python backend/app.py --status  -> показать статус хранилища
+  python backend/app.py --help
+"""
 import os
 import sys
-
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-
-from config import HOST, PORT
 import locker
+from config import VAULT_DIR, BASE_DIR
+from pathlib import Path
 
-app = Flask(__name__)
-CORS(app)
-
-
-@app.get("/api/status")
-def status():
-    return jsonify({"running": True})
-
-
-@app.get("/api/locked")
-def locked():
-    try:
-        items = locker.list_locked()
-        return jsonify({"success": True, "items": items})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.post("/api/lock")
-def lock():
-    data = request.get_json(silent=True) or {}
-    folder_path = (data.get("path") or "").strip()
-    password = data.get("password", "")
-    if not folder_path:
-        return jsonify({"success": False, "error": "Specify folder path"}), 400
-    if not password:
-        return jsonify({"success": False, "error": "Specify password"}), 400
-    result = locker.lock_folder(folder_path, password)
-    status_code = 200 if result.get("success") else 400
-    return jsonify(result), status_code
-
-
-@app.post("/api/unlock")
-def unlock():
-    data = request.get_json(silent=True) or {}
-    folder_id = data.get("id")
-    original_path = data.get("path")
-    password = data.get("password", "")
-    if not folder_id and not original_path:
-        return jsonify({"success": False, "error": "Specify id or path"}), 400
-    if not password:
-        return jsonify({"success": False, "error": "Specify password"}), 400
-    result = locker.unlock_folder(
-        folder_id=folder_id, original_path=original_path, password=password
-    )
-    status_code = 200 if result.get("success") else 400
-    return jsonify(result), status_code
-
+def print_status():
+    VAULT_DIR.mkdir(parents=True, exist_ok=True)
+    items = locker.list_locked()
+    print(f"Zamok — статус (без HTTP)")
+    print(f"  Vault: {VAULT_DIR}")
+    print(f"  DB:    {BASE_DIR / 'data.db'}")
+    print(f"  Заблокировано: {len(items)}")
+    for it in items:
+        mark = "" if it.get("vault_exists") else " [MISSING]"
+        print(f"    • {it['original_path']}{mark}  id={it['id']}")
 
 def main():
-    from config import VAULT_DIR
-    VAULT_DIR.mkdir(parents=True, exist_ok=True)
-    locker.init_db()
-    app.run(host=HOST, port=PORT, debug=False, use_reloader=False)
-
+    if len(sys.argv) > 1 and sys.argv[1] in ("--status", "status"):
+        print_status()
+        return
+    if len(sys.argv) > 1 and sys.argv[1] in ("--help", "-h", "help"):
+        print("Zamok (Python) — без HTTP")
+        print("  python backend/app.py --status   показать хранилище")
+        print("  python backend/service.py install   установить службу")
+        print("  python backend/context_menu.py       установить меню")
+        return
+    # Default: status
+    print_status()
+    print("\nHTTP API удален. Используйте службу + контекстное меню.")
+    print("См. README.md для инструкций.")
 
 if __name__ == "__main__":
     main()
