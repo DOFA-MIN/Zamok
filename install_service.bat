@@ -2,56 +2,56 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
-:: Check administrator rights
 net session >nul 2>&1
 if %errorLevel% neq 0 (
-    echo Running as administrator...
+    echo Запрос прав администратора...
     powershell -Command "Start-Process '%~f0' -Verb RunAs"
     exit /b
 )
 
 echo ============================================
-echo  Zamok Folder Locker - Installation
+echo  Zamok (Python) — Установка службы
+echo  Без HTTP, только ядро + служба
 echo ============================================
 
-echo Checking Python dependencies...
-python -c "import flask, flask_cors, win32serviceutil" >nul 2>&1
+echo [1/3] Проверка зависимостей...
+python -c "import win32serviceutil" >nul 2>&1
 if errorlevel 1 (
-    echo Installing dependencies...
+    echo Установка зависимостей...
     pip install -r backend\requirements.txt
     if errorlevel 1 (
-        echo ERROR: failed to install dependencies.
+        echo ERROR: не удалось установить зависимости.
         pause
         exit /b 1
     )
 )
 
-echo Installing context menu...
+echo [2/3] Установка контекстного меню...
 python backend\context_menu.py
 if errorlevel 1 (
-    echo ERROR: failed to install context menu.
-    pause
-    exit /b 1
+    echo WARNING: не удалось установить меню, продолжаем...
 )
 
-echo Installing service...
+echo [3/3] Установка и запуск службы...
 python backend\service.py install
 if errorlevel 1 (
-    echo ERROR: failed to install service.
+    echo ERROR: не удалось установить службу.
     pause
     exit /b 1
 )
 
-echo Starting service...
 python backend\service.py start
 if errorlevel 1 (
-    echo ERROR: failed to start service.
+    echo WARNING: служба установлена, но не запустилась. Проверьте логи.
     pause
     exit /b 1
 )
 
 echo.
-echo DONE! Service installed and started.
-echo API: http://127.0.0.1:5000/api
-echo Right-click any folder to access Zamok - Lock and Zamok - Manager.
+echo ============================================
+echo  ✓ Готово! (Python версия)
+echo  Правый клик → Zamok — Запереть / Отпереть / Список
+echo  Статус: python backend\app.py --status
+echo  Служба: Zamok Folder Locker (без HTTP)
+echo ============================================
 pause
